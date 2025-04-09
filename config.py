@@ -17,12 +17,17 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
+# Azure OpenAI
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_MODEL = os.getenv("AZURE_OPENAI_MODEL", "gpt-4")
+
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-opus-20240229")
 
 # Selected AI Provider
-SELECTED_PROVIDER = os.getenv("SELECTED_PROVIDER", "gemini").lower()  # Options: gemini, openai, anthropic
+SELECTED_PROVIDER = os.getenv("SELECTED_PROVIDER", "gemini").lower()  # Options: gemini, openai, azure-openai, anthropic
 
 # Agent Configuration
 DEFAULT_TEMPERATURE = 0.2  # Lower temperature for more deterministic outputs

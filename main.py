@@ -530,14 +530,20 @@ Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             console.print(f"[bold red]Error executing task:[/bold red] {str(e)}")
             return {"success": False, "error": str(e)}
 
-    def review_code(self) -> Dict:
+    def review_code(self, auto_fix: bool = False) -> Dict:
         """
         Review the code in the current project.
+
+        Args:
+            auto_fix: Whether to automatically fix issues
 
         Returns:
             Dictionary with review results
         """
-        console.print(Panel("[bold blue]Reviewing Code[/bold blue]"))
+        if auto_fix:
+            console.print(Panel("[bold blue]Reviewing and Fixing Code[/bold blue]"))
+        else:
+            console.print(Panel("[bold blue]Reviewing Code[/bold blue]"))
 
         # Use the project directory if available, otherwise current directory
         review_dir = self.project_dir if self.project_dir and self.project_dir.exists() else Path.cwd()
@@ -545,7 +551,7 @@ Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         console.print(f"Reviewing code in: {review_dir}")
 
         # Review the code
-        review_result = self.code_reviewer.review_directory(review_dir)
+        review_result = self.code_reviewer.review_directory(review_dir, auto_fix=auto_fix)
 
         if not review_result["success"]:
             console.print(f"[bold red]Error reviewing code:[/bold red] {review_result.get('error', 'Unknown error')}")
@@ -748,11 +754,12 @@ def main(description, interactive, file, output):
             console.print("1. Set up project structure")
             console.print("2. Execute a task")
             console.print("3. Review code")
-            console.print("4. Open in code editor")
-            console.print("5. Deploy locally")
-            console.print("6. Exit")
+            console.print("4. Review and fix code")
+            console.print("5. Open in code editor")
+            console.print("6. Deploy locally")
+            console.print("7. Exit")
 
-            choice = input("\nEnter your choice (1-6): ")
+            choice = input("\nEnter your choice (1-7): ")
 
             if choice == "1":
                 agent.setup_project()
@@ -776,16 +783,18 @@ def main(description, interactive, file, output):
                 except ValueError:
                     console.print("[bold red]Invalid input. Please enter a number.[/bold red]")
             elif choice == "3":
-                agent.review_code()
+                agent.review_code(auto_fix=False)
             elif choice == "4":
-                agent.open_in_editor()
+                agent.review_code(auto_fix=True)
             elif choice == "5":
-                agent.deploy_locally()
+                agent.open_in_editor()
             elif choice == "6":
+                agent.deploy_locally()
+            elif choice == "7":
                 console.print("[bold green]Exiting...[/bold green]")
                 break
             else:
-                console.print("[bold red]Invalid choice. Please enter a number between 1 and 6.[/bold red]")
+                console.print("[bold red]Invalid choice. Please enter a number between 1 and 7.[/bold red]")
     else:
         # Non-interactive mode
         console.print(Panel("[bold blue]AI Code Agent[/bold blue]"))

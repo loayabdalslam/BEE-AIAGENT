@@ -7,11 +7,12 @@ An AI-powered code agent that can handle software engineering tasks based on a s
 - **Project Planning**: Generate a detailed project plan from a description
 - **Command Line Execution**: Run necessary commands to set up and develop the project
 - **Git Management**: Handle version control operations
-- **Code Review**: Review generated code for quality and issues
-- **Multiple AI Providers**: Support for Google Gemini, OpenAI, and Anthropic
+- **Code Review & Auto-Fix**: Review generated code for quality and automatically fix issues
+- **Multiple AI Providers**: Support for Google Gemini, OpenAI, Azure OpenAI, and Anthropic
 - **Markdown Logging**: Detailed development logs in Markdown format
 - **Code Editor Integration**: Open projects in your preferred code editor
 - **Local Deployment**: Deploy projects locally with automatic framework detection
+- **One-Shot Mode**: Generate, implement, review, and deploy a project in a single command
 
 ## Requirements
 
@@ -90,10 +91,27 @@ python examples/simple_example.py
 You can select which AI provider to use by setting the `SELECTED_PROVIDER` environment variable in your `.env` file:
 
 ```
-SELECTED_PROVIDER=openai  # Options: gemini, openai, anthropic
+SELECTED_PROVIDER=openai  # Options: gemini, openai, azure-openai, anthropic
 ```
 
 Make sure to set the corresponding API key for your selected provider.
+
+### One-Shot Mode
+
+For a complete end-to-end experience, use the one-shot mode to generate, implement, review, and deploy a project in a single command:
+
+```bash
+python oneshot.py "Create a Flask web application with user authentication"
+```
+
+Options:
+- `--output` or `-o`: Specify output directory
+- `--no-editor`: Don't open the project in a code editor
+- `--no-deploy`: Don't deploy the project locally
+
+```bash
+python oneshot.py --output E:\Projects\generated --no-deploy "Create a React web application"
+```
 
 ## Project Structure
 
