@@ -4,13 +4,11 @@ AI Code Agent - Main application entry point.
 
 This agent can handle software engineering tasks based on a single project description prompt.
 """
-import os
-import sys
 import logging
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import click
 from rich.console import Console
@@ -249,7 +247,7 @@ class CodeAgent:
         Include only the JSON output without any additional text.
         """
 
-        structure_text = self.gemini_client.generate_text(structure_prompt)
+        structure_text = self.ai_client.generate_text(structure_prompt)
 
         # Extract JSON from the response
         try:
@@ -406,7 +404,7 @@ class CodeAgent:
         """
 
         console.print("\n[bold yellow]Generating implementation plan...[/bold yellow]")
-        execution_text = self.gemini_client.generate_text(execution_prompt)
+        execution_text = self.ai_client.generate_text(execution_prompt)
 
         try:
             # Find JSON in the response
