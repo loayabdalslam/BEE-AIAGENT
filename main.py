@@ -140,14 +140,20 @@ class CodeAgent:
             self.logger.log_text("**Features:**")
             self.logger.log_text("\n".join([f"- {feature}" for feature in feature_list]))
 
-        console.print("\n[bold yellow]Generating project plan...[/bold yellow]")
+        console.print("\n[bold yellow]Generating project plan and tasks...[/bold yellow]")
 
-        # Generate a project plan
-        self.project_plan = self.planner.generate_plan(description)
+        # Generate project plan and tasks in a single call to reduce API usage
+        combined_result = self.planner.generate_plan_and_tasks(description)
 
-        if "error" in self.project_plan:
-            console.print(f"[bold red]Error generating plan:[/bold red] {self.project_plan['error']}")
-            return {"success": False, "error": self.project_plan["error"]}
+        if "error" in combined_result:
+            console.print(f"[bold red]Error generating project plan:[/bold red] {combined_result['error']}")
+            return {"success": False, "error": combined_result["error"]}
+
+        # Extract plan from combined result
+        self.project_plan = {
+            "raw_plan": combined_result.get("raw_plan", ""),
+            "structured_plan": combined_result.get("structured_plan", {})
+        }
 
         # Display the plan
         console.print("\n[bold green]Project Plan Generated:[/bold green]")
@@ -157,17 +163,21 @@ class CodeAgent:
         self.logger.start_section("Project Plan")
         self.logger.log_plan(self.project_plan)
 
-        # Generate tasks
-        console.print("\n[bold yellow]Generating development tasks...[/bold yellow]")
-        try:
-            self.tasks = self.planner.generate_tasks(self.project_plan)
+        # Get tasks from the combined result
+        self.tasks = combined_result.get("tasks", [])
 
-            if not self.tasks:
-                console.print("[bold red]Error generating tasks: No tasks were returned[/bold red]")
-                return {"success": False, "error": "Failed to generate tasks: No tasks were returned"}
-        except Exception as e:
-            console.print(f"[bold red]Error generating tasks: {str(e)}[/bold red]")
-            return {"success": False, "error": f"Failed to generate tasks: {str(e)}"}
+        # If no tasks were generated, try to extract them from the plan
+        if not self.tasks:
+            console.print("\n[bold yellow]Extracting development tasks from plan...[/bold yellow]")
+            try:
+                self.tasks = self.planner.generate_tasks(self.project_plan)
+
+                if not self.tasks:
+                    console.print("[bold red]Error generating tasks: No tasks were returned[/bold red]")
+                    return {"success": False, "error": "Failed to generate tasks: No tasks were returned"}
+            except Exception as e:
+                console.print(f"[bold red]Error generating tasks: {str(e)}[/bold red]")
+                return {"success": False, "error": f"Failed to generate tasks: {str(e)}"}
 
         # Display tasks
         console.print(f"\n[bold green]Generated {len(self.tasks)} tasks[/bold green]")
@@ -652,6 +662,8 @@ Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 console.print(f"[bold green]{result['message']}[/bold green]")
                 if "url" in result and result["url"]:
                     console.print(f"URL: [bold blue]{result['url']}[/bold blue]")
+                if "start_command" in result:
+                    console.print(f"Start command: [bold yellow]{result['start_command']}[/bold yellow]")
                 if "process_id" in result:
                     console.print(f"Process ID: [bold]{result['process_id']}[/bold]")
 
@@ -659,6 +671,8 @@ Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     self.logger.log_text(f"✅ {result['message']}")
                     if "url" in result and result["url"]:
                         self.logger.log_text(f"URL: {result['url']}")
+                    if "start_command" in result:
+                        self.logger.log_text(f"Start command: {result['start_command']}")
                     if "process_id" in result:
                         self.logger.log_text(f"Process ID: {result['process_id']}")
             else:

@@ -17,23 +17,23 @@ class LocalDeployer:
     """
     Responsible for deploying projects locally.
     """
-    
+
     def __init__(self, project_dir: Union[str, Path]):
         """
         Initialize the local deployer.
-        
+
         Args:
             project_dir: Path to the project directory
         """
         self.project_dir = Path(project_dir)
-        
+
         if not self.project_dir.exists() or not self.project_dir.is_dir():
             raise ValueError(f"Project directory not found: {self.project_dir}")
-    
+
     def detect_project_type(self) -> str:
         """
         Detect the type of project based on files in the directory.
-        
+
         Returns:
             Project type (e.g., flask, react, django, etc.)
         """
@@ -50,7 +50,7 @@ class LocalDeployer:
                 return "react"
             else:
                 return "nodejs"
-        
+
         # Check for Python projects
         if (self.project_dir / "requirements.txt").exists() or list(self.project_dir.glob("*.py")):
             # Check for specific frameworks
@@ -62,7 +62,7 @@ class LocalDeployer:
                 return "fastapi"
             else:
                 return "python"
-        
+
         # Check for other project types
         if (self.project_dir / "pom.xml").exists():
             return "java-maven"
@@ -72,45 +72,45 @@ class LocalDeployer:
             return "rust"
         elif (self.project_dir / "go.mod").exists():
             return "go"
-        
+
         # Default to unknown
         return "unknown"
-    
+
     def _check_dependency(self, dependency: str) -> bool:
         """
         Check if a dependency is listed in package.json.
-        
+
         Args:
             dependency: Dependency name to check
-            
+
         Returns:
             True if the dependency is found, False otherwise
         """
         package_json_path = self.project_dir / "package.json"
         if not package_json_path.exists():
             return False
-        
+
         try:
             import json
             with open(package_json_path, 'r') as f:
                 package_data = json.load(f)
-            
+
             dependencies = package_data.get("dependencies", {})
             dev_dependencies = package_data.get("devDependencies", {})
-            
+
             return dependency in dependencies or dependency in dev_dependencies
         except Exception as e:
             logger.error(f"Error checking dependency {dependency}: {e}")
             return False
-    
+
     def _check_file_content(self, file_pattern: str, content: str) -> bool:
         """
         Check if any file matching the pattern contains the specified content.
-        
+
         Args:
             file_pattern: Glob pattern for files to check
             content: Content to search for
-            
+
         Returns:
             True if the content is found in any matching file, False otherwise
         """
@@ -125,24 +125,24 @@ class LocalDeployer:
         except Exception as e:
             logger.error(f"Error checking file content: {e}")
             return False
-    
+
     def deploy_locally(self) -> Dict:
         """
         Deploy the project locally based on its type.
-        
+
         Returns:
             Dictionary with deployment results
         """
         project_type = self.detect_project_type()
         logger.info(f"Detected project type: {project_type}")
-        
+
         if project_type == "unknown":
             return {
                 "success": False,
                 "message": "Unknown project type. Could not determine how to deploy.",
                 "project_type": project_type
             }
-        
+
         # Deploy based on project type
         if project_type in ["react", "vite", "nextjs", "angular", "nodejs"]:
             return self._deploy_nodejs(project_type)
@@ -160,14 +160,14 @@ class LocalDeployer:
                 "message": f"Deployment for {project_type} projects is not yet supported.",
                 "project_type": project_type
             }
-    
+
     def _deploy_nodejs(self, project_type: str) -> Dict:
         """
-        Deploy a Node.js project locally.
-        
+        Deploy a Node.js project locally by installing dependencies.
+
         Args:
             project_type: Specific Node.js project type
-            
+
         Returns:
             Dictionary with deployment results
         """
@@ -181,7 +181,7 @@ class LocalDeployer:
                     "message": "npm is not installed. Please install Node.js and npm.",
                     "project_type": project_type
                 }
-            
+
             # Install dependencies
             logger.info("Installing dependencies...")
             install_process = subprocess.run(
@@ -190,7 +190,7 @@ class LocalDeployer:
                 capture_output=True,
                 text=True
             )
-            
+
             if install_process.returncode != 0:
                 return {
                     "success": False,
@@ -198,57 +198,27 @@ class LocalDeployer:
                     "project_type": project_type,
                     "stderr": install_process.stderr
                 }
-            
-            # Start the development server
-            logger.info("Starting development server...")
-            
+
             # Determine the start command based on project type
             if project_type == "nextjs":
-                start_command = ["npm", "run", "dev"]
-            else:
-                start_command = ["npm", "start"]
-            
-            # Start the server in a new process
-            server_process = subprocess.Popen(
-                start_command,
-                cwd=self.project_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=platform.system() == "Windows"
-            )
-            
-            # Wait a bit for the server to start
-            time.sleep(5)
-            
-            # Check if the process is still running
-            if server_process.poll() is not None:
-                # Process has terminated
-                stdout, stderr = server_process.communicate()
-                return {
-                    "success": False,
-                    "message": f"Server process terminated: {stderr}",
-                    "project_type": project_type,
-                    "stdout": stdout,
-                    "stderr": stderr
-                }
-            
-            # Determine the URL based on project type
-            if project_type == "nextjs":
+                start_command = "npm run dev"
                 url = "http://localhost:3000"
             elif project_type == "vite":
+                start_command = "npm run dev"
                 url = "http://localhost:5173"
             elif project_type == "angular":
+                start_command = "ng serve"
                 url = "http://localhost:4200"
             else:
+                start_command = "npm start"
                 url = "http://localhost:3000"  # Default for React and Node.js
-            
+
             return {
                 "success": True,
-                "message": f"Development server started at {url}",
+                "message": f"Dependencies installed successfully. To start the server, run: '{start_command}' in the project directory.",
                 "project_type": project_type,
                 "url": url,
-                "process_id": server_process.pid
+                "start_command": start_command
             }
         except Exception as e:
             logger.error(f"Error deploying Node.js project: {e}")
@@ -257,14 +227,14 @@ class LocalDeployer:
                 "message": f"Error deploying Node.js project: {str(e)}",
                 "project_type": project_type
             }
-    
+
     def _deploy_python(self, project_type: str) -> Dict:
         """
-        Deploy a Python project locally.
-        
+        Deploy a Python project locally by setting up a virtual environment and installing dependencies.
+
         Args:
             project_type: Specific Python project type
-            
+
         Returns:
             Dictionary with deployment results
         """
@@ -272,6 +242,7 @@ class LocalDeployer:
             # Check if Python is installed
             try:
                 subprocess.run(["python", "--version"], check=True, capture_output=True)
+                python_cmd = "python"
             except Exception:
                 try:
                     subprocess.run(["python3", "--version"], check=True, capture_output=True)
@@ -282,13 +253,11 @@ class LocalDeployer:
                         "message": "Python is not installed or not in PATH.",
                         "project_type": project_type
                     }
-            else:
-                python_cmd = "python"
-            
-            # Create and activate virtual environment
+
+            # Create virtual environment
             logger.info("Setting up virtual environment...")
             venv_dir = self.project_dir / "venv"
-            
+
             if not venv_dir.exists():
                 subprocess.run(
                     [python_cmd, "-m", "venv", "venv"],
@@ -296,13 +265,15 @@ class LocalDeployer:
                     check=True,
                     capture_output=True
                 )
-            
-            # Determine the pip command
+
+            # Determine the pip and python commands
             if platform.system() == "Windows":
                 pip_cmd = str(venv_dir / "Scripts" / "pip")
+                python_interpreter = str(venv_dir / "Scripts" / "python")
             else:
                 pip_cmd = str(venv_dir / "bin" / "pip")
-            
+                python_interpreter = str(venv_dir / "bin" / "python")
+
             # Install dependencies
             if (self.project_dir / "requirements.txt").exists():
                 logger.info("Installing dependencies...")
@@ -312,7 +283,7 @@ class LocalDeployer:
                     capture_output=True,
                     text=True
                 )
-                
+
                 if install_process.returncode != 0:
                     return {
                         "success": False,
@@ -320,16 +291,7 @@ class LocalDeployer:
                         "project_type": project_type,
                         "stderr": install_process.stderr
                     }
-            
-            # Start the server based on project type
-            logger.info(f"Starting {project_type} server...")
-            
-            # Determine the Python interpreter path
-            if platform.system() == "Windows":
-                python_interpreter = str(venv_dir / "Scripts" / "python")
-            else:
-                python_interpreter = str(venv_dir / "bin" / "python")
-            
+
             # Determine the start command based on project type
             if project_type == "flask":
                 # Find the Flask app file
@@ -340,12 +302,12 @@ class LocalDeployer:
                         if "Flask(__name__)" in content:
                             app_file = file_path.name
                             break
-                
+
                 if not app_file:
                     app_file = "app.py"  # Default Flask app file
-                
-                start_command = [python_interpreter, "-m", "flask", "run", "--host=0.0.0.0"]
-                os.environ["FLASK_APP"] = app_file
+
+                start_command = f"set FLASK_APP={app_file} && {python_interpreter} -m flask run" if platform.system() == "Windows" else f"FLASK_APP={app_file} {python_interpreter} -m flask run"
+                url = "http://localhost:5000"
             elif project_type == "fastapi":
                 # Find the FastAPI app file
                 app_file = None
@@ -355,21 +317,23 @@ class LocalDeployer:
                         if "FastAPI(" in content:
                             app_file = file_path.name
                             break
-                
+
                 if not app_file:
                     app_file = "main.py"  # Default FastAPI app file
-                
+
                 # Install uvicorn if not already installed
                 subprocess.run(
                     [pip_cmd, "install", "uvicorn"],
                     cwd=self.project_dir,
                     capture_output=True
                 )
-                
+
                 module_name = app_file.replace(".py", "")
-                start_command = [python_interpreter, "-m", "uvicorn", f"{module_name}:app", "--host", "0.0.0.0", "--reload"]
+                start_command = f"{python_interpreter} -m uvicorn {module_name}:app --reload"
+                url = "http://localhost:8000"
             elif project_type == "django":
-                start_command = [python_interpreter, "manage.py", "runserver", "0.0.0.0:8000"]
+                start_command = f"{python_interpreter} manage.py runserver"
+                url = "http://localhost:8000"
             else:
                 # Find a Python file with a main function or if __name__ == "__main__" block
                 main_file = None
@@ -379,58 +343,23 @@ class LocalDeployer:
                         if "if __name__ == \"__main__\"" in content or "def main(" in content:
                             main_file = file_path.name
                             break
-                
+
                 if not main_file:
                     return {
                         "success": False,
                         "message": "Could not find a main Python file to run.",
                         "project_type": project_type
                     }
-                
-                start_command = [python_interpreter, main_file]
-            
-            # Start the server in a new process
-            server_process = subprocess.Popen(
-                start_command,
-                cwd=self.project_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=os.environ,
-                shell=platform.system() == "Windows"
-            )
-            
-            # Wait a bit for the server to start
-            time.sleep(5)
-            
-            # Check if the process is still running
-            if server_process.poll() is not None:
-                # Process has terminated
-                stdout, stderr = server_process.communicate()
-                return {
-                    "success": False,
-                    "message": f"Server process terminated: {stderr}",
-                    "project_type": project_type,
-                    "stdout": stdout,
-                    "stderr": stderr
-                }
-            
-            # Determine the URL based on project type
-            if project_type == "flask":
-                url = "http://localhost:5000"
-            elif project_type == "fastapi":
-                url = "http://localhost:8000"
-            elif project_type == "django":
-                url = "http://localhost:8000"
-            else:
+
+                start_command = f"{python_interpreter} {main_file}"
                 url = None  # No URL for regular Python scripts
-            
+
             return {
                 "success": True,
-                "message": f"Server started at {url}" if url else "Python script is running",
+                "message": f"Virtual environment created and dependencies installed successfully. To start the server, run: '{start_command}' in the project directory.",
                 "project_type": project_type,
                 "url": url,
-                "process_id": server_process.pid
+                "start_command": start_command
             }
         except Exception as e:
             logger.error(f"Error deploying Python project: {e}")
@@ -439,14 +368,14 @@ class LocalDeployer:
                 "message": f"Error deploying Python project: {str(e)}",
                 "project_type": project_type
             }
-    
+
     def _deploy_java(self, project_type: str) -> Dict:
         """
         Deploy a Java project locally.
-        
+
         Args:
             project_type: Specific Java project type (maven or gradle)
-            
+
         Returns:
             Dictionary with deployment results
         """
@@ -460,10 +389,10 @@ class LocalDeployer:
                     "message": "Java is not installed or not in PATH.",
                     "project_type": project_type
                 }
-            
+
             # Build the project
             logger.info("Building the project...")
-            
+
             if project_type == "java-maven":
                 # Check if Maven is installed
                 try:
@@ -474,7 +403,7 @@ class LocalDeployer:
                         "message": "Maven is not installed or not in PATH.",
                         "project_type": project_type
                     }
-                
+
                 build_process = subprocess.run(
                     ["mvn", "clean", "package"],
                     cwd=self.project_dir,
@@ -491,14 +420,14 @@ class LocalDeployer:
                         "message": "Gradle is not installed or not in PATH.",
                         "project_type": project_type
                     }
-                
+
                 build_process = subprocess.run(
                     ["gradle", "build"],
                     cwd=self.project_dir,
                     capture_output=True,
                     text=True
                 )
-            
+
             if build_process.returncode != 0:
                 return {
                     "success": False,
@@ -506,28 +435,28 @@ class LocalDeployer:
                     "project_type": project_type,
                     "stderr": build_process.stderr
                 }
-            
+
             # Find the JAR file
             jar_files = []
             if project_type == "java-maven":
                 jar_dir = self.project_dir / "target"
             else:  # java-gradle
                 jar_dir = self.project_dir / "build" / "libs"
-            
+
             if jar_dir.exists():
                 jar_files = list(jar_dir.glob("*.jar"))
-            
+
             if not jar_files:
                 return {
                     "success": False,
                     "message": "No JAR files found after building the project.",
                     "project_type": project_type
                 }
-            
+
             # Run the JAR file
             logger.info("Running the JAR file...")
             jar_file = str(jar_files[0])
-            
+
             server_process = subprocess.Popen(
                 ["java", "-jar", jar_file],
                 cwd=self.project_dir,
@@ -535,10 +464,10 @@ class LocalDeployer:
                 stderr=subprocess.PIPE,
                 text=True
             )
-            
+
             # Wait a bit for the server to start
             time.sleep(5)
-            
+
             # Check if the process is still running
             if server_process.poll() is not None:
                 # Process has terminated
@@ -550,10 +479,10 @@ class LocalDeployer:
                     "stdout": stdout,
                     "stderr": stderr
                 }
-            
+
             # Assume it's a Spring Boot application running on port 8080
             url = "http://localhost:8080"
-            
+
             return {
                 "success": True,
                 "message": f"Java application started at {url}",
@@ -568,11 +497,11 @@ class LocalDeployer:
                 "message": f"Error deploying Java project: {str(e)}",
                 "project_type": project_type
             }
-    
+
     def _deploy_rust(self) -> Dict:
         """
         Deploy a Rust project locally.
-        
+
         Returns:
             Dictionary with deployment results
         """
@@ -586,7 +515,7 @@ class LocalDeployer:
                     "message": "Rust is not installed or not in PATH.",
                     "project_type": "rust"
                 }
-            
+
             # Build the project
             logger.info("Building the project...")
             build_process = subprocess.run(
@@ -595,7 +524,7 @@ class LocalDeployer:
                 capture_output=True,
                 text=True
             )
-            
+
             if build_process.returncode != 0:
                 return {
                     "success": False,
@@ -603,7 +532,7 @@ class LocalDeployer:
                     "project_type": "rust",
                     "stderr": build_process.stderr
                 }
-            
+
             # Run the project
             logger.info("Running the project...")
             server_process = subprocess.Popen(
@@ -613,10 +542,10 @@ class LocalDeployer:
                 stderr=subprocess.PIPE,
                 text=True
             )
-            
+
             # Wait a bit for the server to start
             time.sleep(5)
-            
+
             # Check if the process is still running
             if server_process.poll() is not None:
                 # Process has terminated
@@ -628,12 +557,12 @@ class LocalDeployer:
                     "stdout": stdout,
                     "stderr": stderr
                 }
-            
+
             # Try to determine the URL by checking for common web frameworks
             url = None
             if self._check_dependency("actix-web") or self._check_dependency("rocket") or self._check_dependency("warp"):
                 url = "http://localhost:8080"  # Common default port for Rust web servers
-            
+
             return {
                 "success": True,
                 "message": f"Rust application started at {url}" if url else "Rust application is running",
@@ -648,11 +577,11 @@ class LocalDeployer:
                 "message": f"Error deploying Rust project: {str(e)}",
                 "project_type": "rust"
             }
-    
+
     def _deploy_go(self) -> Dict:
         """
         Deploy a Go project locally.
-        
+
         Returns:
             Dictionary with deployment results
         """
@@ -666,7 +595,7 @@ class LocalDeployer:
                     "message": "Go is not installed or not in PATH.",
                     "project_type": "go"
                 }
-            
+
             # Build the project
             logger.info("Building the project...")
             build_process = subprocess.run(
@@ -675,7 +604,7 @@ class LocalDeployer:
                 capture_output=True,
                 text=True
             )
-            
+
             if build_process.returncode != 0:
                 return {
                     "success": False,
@@ -683,20 +612,20 @@ class LocalDeployer:
                     "project_type": "go",
                     "stderr": build_process.stderr
                 }
-            
+
             # Run the project
             logger.info("Running the project...")
             app_path = self.project_dir / "app"
             if platform.system() == "Windows":
                 app_path = self.project_dir / "app.exe"
-            
+
             if not app_path.exists():
                 return {
                     "success": False,
                     "message": "Built application not found.",
                     "project_type": "go"
                 }
-            
+
             server_process = subprocess.Popen(
                 [str(app_path)],
                 cwd=self.project_dir,
@@ -704,10 +633,10 @@ class LocalDeployer:
                 stderr=subprocess.PIPE,
                 text=True
             )
-            
+
             # Wait a bit for the server to start
             time.sleep(5)
-            
+
             # Check if the process is still running
             if server_process.poll() is not None:
                 # Process has terminated
@@ -719,12 +648,12 @@ class LocalDeployer:
                     "stdout": stdout,
                     "stderr": stderr
                 }
-            
+
             # Try to determine if it's a web server by checking for common web frameworks
             url = None
             if self._check_file_content("*.go", "http.ListenAndServe") or self._check_file_content("*.go", "gin.New") or self._check_file_content("*.go", "echo.New"):
                 url = "http://localhost:8080"  # Common default port for Go web servers
-            
+
             return {
                 "success": True,
                 "message": f"Go application started at {url}" if url else "Go application is running",

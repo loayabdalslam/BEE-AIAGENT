@@ -7,6 +7,8 @@ import json
 from typing import Dict, List, Optional, Union
 from pathlib import Path
 
+from agent.utils import extract_code_from_markdown
+
 from models.gemini_client import GeminiClient
 
 # Configure logging
@@ -71,7 +73,7 @@ class CodeReviewer:
                 issues = analysis["issues"]
                 if issues and len(issues) > 0:
                     # Generate improved code
-                    improved_code = self._generate_improved_code(code, analysis, language)
+                    improved_code = self._generate_improved_code(code, analysis, language, str(file_path))
 
                     if improved_code and improved_code != code:
                         # Backup the original file
@@ -99,7 +101,7 @@ class CodeReviewer:
                 "error": str(e)
             }
 
-    def _generate_improved_code(self, code: str, analysis: Dict, language: str) -> Optional[str]:
+    def _generate_improved_code(self, code: str, analysis: Dict, language: str, file_path: str = None) -> Optional[str]:
         """
         Generate improved code based on analysis.
 
@@ -107,6 +109,7 @@ class CodeReviewer:
             code: Original code
             analysis: Code analysis results
             language: Programming language
+            file_path: Path to the file being improved (for better context)
 
         Returns:
             Improved code or None if no improvements could be made
@@ -120,8 +123,11 @@ class CodeReviewer:
             # Create a prompt for code improvement
             issues_text = "\n".join([f"- {issue.get('severity', 'unknown')} issue: {issue.get('description', 'No description')}" for issue in issues])
 
+            # Get file name for better context
+            file_name = Path(file_path).name if file_path else f"code.{language}"
+
             improvement_prompt = f"""
-            I need you to improve the following {language} code by fixing these issues:
+            I need you to improve the following {language} code by fixing these issues. This is from a file named '{file_name}'.
 
             ISSUES TO FIX:
             {issues_text}
@@ -131,23 +137,22 @@ class CodeReviewer:
             {code}
             ```
 
+            IMPORTANT GUIDELINES:
+            1. Preserve all imports and function signatures exactly as they are
+            2. Maintain the same overall structure and functionality
+            3. Be extremely careful with file paths and references to other modules
+            4. Fix only the identified issues without changing working code
+            5. Make sure the code is complete and properly formatted
+            6. If there are imports or references to other modules, keep them intact
+
             Please provide ONLY the improved code without any explanations or markdown formatting.
-            Maintain the same overall structure and functionality while fixing the issues.
-            Make sure the code is complete and properly formatted.
             """
 
             # Generate improved code
             improved_code = self.gemini_client.generate_text(improvement_prompt)
 
             # Clean up the response (remove markdown code blocks if present)
-            if improved_code.startswith("```"):
-                # Find the language identifier and skip it
-                first_line_end = improved_code.find("\n")
-                if first_line_end > 0:
-                    # Find the closing code block
-                    closing_block = improved_code.rfind("```")
-                    if closing_block > first_line_end:
-                        improved_code = improved_code[first_line_end+1:closing_block].strip()
+            improved_code = extract_code_from_markdown(improved_code)
 
             return improved_code
         except Exception as e:

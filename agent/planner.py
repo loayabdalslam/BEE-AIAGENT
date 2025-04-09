@@ -24,25 +24,29 @@ class Planner:
         """
         self.gemini_client = gemini_client or GeminiClient()
 
-    def generate_plan(self, project_description: str) -> Dict:
+    def generate_plan_and_tasks(self, project_description: str) -> Dict:
         """
-        Generate a comprehensive project plan from a description.
+        Generate a comprehensive project plan and tasks from a description in a single request.
 
         Args:
             project_description: Description of the project
 
         Returns:
-            Dictionary containing the project plan
+            Dictionary containing the project plan and tasks
         """
-        logger.info("Generating project plan")
+        logger.info("Generating project plan and tasks")
 
-        planning_prompt = f"""
+        # Combined prompt for both plan and tasks to reduce API calls
+        combined_prompt = f"""
         Create a comprehensive software development plan for the following project:
 
         PROJECT DESCRIPTION:
         {project_description}
 
-        Your plan should include:
+        Your response should have TWO PARTS:
+
+        PART 1: PROJECT PLAN
+        Create a structured plan with the following sections:
 
         1. Project Overview:
            - Main objectives
@@ -65,40 +69,111 @@ class Planner:
            - Key files and their purposes
            - External dependencies
 
-        5. Development Tasks:
-           - Ordered list of specific tasks
-           - Estimated complexity for each task (Low/Medium/High)
-
-        6. Testing Strategy:
+        5. Testing Strategy:
            - Unit testing approach
            - Integration testing approach
            - Manual testing requirements
 
-        7. Deployment Considerations:
+        6. Deployment Considerations:
            - Recommended deployment platform
            - Configuration requirements
            - CI/CD pipeline suggestions
 
-        Format your response as a structured plan that can be followed step by step.
+        PART 2: DEVELOPMENT TASKS
+        Create a list of specific, actionable development tasks. For each task, provide:
+        1. Task ID (numeric)
+        2. Task name (short, descriptive)
+        3. Description (detailed explanation)
+        4. Estimated complexity (Low/Medium/High)
+        5. Dependencies (IDs of tasks that must be completed first)
+        6. Category (Setup, Backend, Frontend, Testing, Deployment, etc.)
+
+        Format each task as follows:
+
+        Task ID: 1
+        Task name: Example task name
+        Description: Detailed description of the task
+        Estimated complexity: Low/Medium/High
+        Dependencies: None or comma-separated IDs
+        Category: Category name
+
+        Provide at least 5-10 tasks that cover the entire development process.
         """
 
         try:
-            plan_text = self.gemini_client.generate_text(
-                planning_prompt,
+            # Make a single API call for both plan and tasks
+            combined_response = self.gemini_client.generate_text(
+                combined_prompt,
                 temperature=PLANNING_TEMPERATURE
             )
 
+            # Split the response into plan and tasks sections
+            plan_text, tasks_text = self._split_combined_response(combined_response)
+
             # Parse the plan text into a structured format
-            # In a real implementation, you might want to use a more sophisticated parsing approach
             plan_sections = self._parse_plan(plan_text)
+
+            # Parse the tasks text into a structured format
+            tasks = self._parse_tasks(tasks_text)
 
             return {
                 "raw_plan": plan_text,
-                "structured_plan": plan_sections
+                "structured_plan": plan_sections,
+                "tasks": tasks
             }
         except Exception as e:
-            logger.error(f"Error generating plan: {e}")
+            logger.error(f"Error generating plan and tasks: {e}")
             return {"error": str(e)}
+
+    def _split_combined_response(self, combined_response: str) -> tuple:
+        """
+        Split the combined response into plan and tasks sections.
+
+        Args:
+            combined_response: Combined response from the AI
+
+        Returns:
+            Tuple of (plan_text, tasks_text)
+        """
+        # Look for clear section markers
+        part2_markers = ["PART 2:", "DEVELOPMENT TASKS:", "# DEVELOPMENT TASKS", "## DEVELOPMENT TASKS"]
+
+        for marker in part2_markers:
+            if marker in combined_response:
+                parts = combined_response.split(marker, 1)
+                return parts[0].strip(), marker + parts[1].strip()
+
+        # If no clear marker, try to find task patterns
+        if "Task ID: 1" in combined_response:
+            index = combined_response.find("Task ID: 1")
+            return combined_response[:index].strip(), combined_response[index:].strip()
+
+        # If all else fails, assume the first 70% is the plan and the rest is tasks
+        split_point = int(len(combined_response) * 0.7)
+        return combined_response[:split_point].strip(), combined_response[split_point:].strip()
+
+    def generate_plan(self, project_description: str) -> Dict:
+        """
+        Generate a comprehensive project plan from a description.
+
+        Args:
+            project_description: Description of the project
+
+        Returns:
+            Dictionary containing the project plan
+        """
+        logger.info("Generating project plan")
+
+        # Use the combined method but only return the plan part
+        result = self.generate_plan_and_tasks(project_description)
+
+        if "error" in result:
+            return result
+
+        return {
+            "raw_plan": result.get("raw_plan", ""),
+            "structured_plan": result.get("structured_plan", {})
+        }
 
     def _parse_plan(self, plan_text: str) -> Dict:
         """
@@ -156,151 +231,154 @@ class Planner:
         Returns:
             List of task dictionaries
         """
-        tasks_prompt = f"""
-        Based on the following project plan, generate a list of specific, actionable development tasks:
+        # Check if we already have tasks from the combined call
+        if "tasks" in project_plan and project_plan["tasks"]:
+            logger.info(f"Using {len(project_plan['tasks'])} tasks from combined plan and tasks generation")
+            return project_plan["tasks"]
 
-        {project_plan.get('raw_plan', '')}
-
-        For each task, provide:
-        1. Task ID
-        2. Task name
-        3. Description
-        4. Estimated complexity (Low/Medium/High)
-        5. Dependencies (IDs of tasks that must be completed first)
-        6. Category (Setup, Backend, Frontend, Testing, Deployment, etc.)
-
-        Format your response as a list of tasks with clear separation between tasks.
-        Use the following format for each task:
-
-        Task ID: 1
-        Task name: Example task name
-        Description: Detailed description of the task
-        Estimated complexity: Low/Medium/High
-        Dependencies: None or comma-separated IDs
-        Category: Category name
-        """
-
+        # If we don't have tasks yet, try to extract them from the plan
         try:
-            # Generate tasks text
-            tasks_text = self.gemini_client.generate_text(tasks_prompt)
+            # Try to extract tasks from the plan directly without making another API call
+            raw_plan = project_plan.get('raw_plan', '')
 
-            if not tasks_text or len(tasks_text.strip()) < 10:
-                logger.error(f"Empty or very short response from API: '{tasks_text}'")
-                # Create a fallback task list based on the project plan
-                return self._generate_fallback_tasks(project_plan)
+            # Look for task sections in the plan
+            task_section_markers = ["DEVELOPMENT TASKS", "TASKS", "Task 1:", "Task ID: 1"]
+            tasks_text = ""
 
-            # Parse tasks
-            tasks = []
-            current_task = {}
-            task_lines = []
+            for marker in task_section_markers:
+                if marker in raw_plan:
+                    parts = raw_plan.split(marker, 1)
+                    if len(parts) > 1:
+                        tasks_text = marker + parts[1]
+                        break
 
-            # First, split by potential task boundaries
-            sections = tasks_text.split("\n\n")
+            # If we found a tasks section, parse it
+            if tasks_text:
+                tasks = self._parse_tasks(tasks_text)
+                if tasks:
+                    logger.info(f"Extracted {len(tasks)} tasks from the plan without additional API call")
+                    return tasks
 
-            for section in sections:
-                lines = section.strip().split("\n")
-                task_data = {}
-
-                # Check if this section looks like a task
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    # Try to parse key-value pairs
-                    if ":" in line:
-                        key, value = line.split(":", 1)
-                        key = key.strip().lower()
-                        value = value.strip()
-
-                        # Map common key variations
-                        if "task id" in key or "id" == key:
-                            task_data["id"] = value
-                        elif "task name" in key or "name" == key:
-                            task_data["task name"] = value
-                        elif "description" in key:
-                            task_data["description"] = value
-                        elif "complexity" in key:
-                            task_data["complexity"] = value
-                        elif "dependencies" in key:
-                            task_data["dependencies"] = value
-                        elif "category" in key:
-                            task_data["category"] = value
-
-                # If we found at least an ID and name, consider it a valid task
-                if "id" in task_data and ("task name" in task_data or "description" in task_data):
-                    tasks.append(task_data)
-
-            # If we couldn't parse any tasks using the section approach, try line-by-line
-            if not tasks:
-                current_task = {}
-
-                for line in tasks_text.split('\n'):
-                    line = line.strip()
-
-                    # Skip empty lines
-                    if not line:
-                        continue
-
-                    # Check if this is a new task
-                    if line.startswith("Task ID:") or line.startswith("1.") or (line.lower().startswith("task") and "id" in line.lower()):
-                        # Save the previous task if it exists
-                        if current_task and "id" in current_task:
-                            tasks.append(current_task)
-
-                        # Start a new task
-                        current_task = {}
-
-                        # Extract ID if possible
-                        if ":" in line:
-                            current_task["id"] = line.split(":", 1)[1].strip()
-                        else:
-                            # Try to extract a number
-                            import re
-                            numbers = re.findall(r'\d+', line)
-                            if numbers:
-                                current_task["id"] = numbers[0]
-                            else:
-                                current_task["id"] = line
-                    elif ":" in line:
-                        # Add property to the current task
-                        key, value = line.split(":", 1)
-                        key = key.strip().lower()
-
-                        # Map common key variations
-                        if "task name" in key or "name" == key:
-                            current_task["task name"] = value.strip()
-                        elif "description" in key:
-                            current_task["description"] = value.strip()
-                        elif "complexity" in key:
-                            current_task["complexity"] = value.strip()
-                        elif "dependencies" in key:
-                            current_task["dependencies"] = value.strip()
-                        elif "category" in key:
-                            current_task["category"] = value.strip()
-
-                # Add the last task
-                if current_task and "id" in current_task:
-                    tasks.append(current_task)
-
-            # If we still couldn't parse any tasks, use the fallback
-            if not tasks:
-                logger.warning("Could not parse any tasks from the API response")
-                return self._generate_fallback_tasks(project_plan)
-
-            # Ensure all tasks have the minimum required fields
-            for task in tasks:
-                if "task name" not in task and "id" in task:
-                    task["task name"] = f"Task {task['id']}"
-                if "description" not in task:
-                    task["description"] = task.get("task name", f"Task {task.get('id', 'unknown')}")
-
-            logger.info(f"Successfully generated {len(tasks)} tasks")
-            return tasks
-        except Exception as e:
-            logger.error(f"Error generating tasks: {e}")
-            # Return fallback tasks instead of empty list
+            # If we couldn't extract tasks, use the fallback
+            logger.warning("Could not extract tasks from the plan, using fallback")
             return self._generate_fallback_tasks(project_plan)
+        except Exception as e:
+            logger.error(f"Error extracting tasks from plan: {e}")
+            # Return fallback tasks
+            return self._generate_fallback_tasks(project_plan)
+
+    def _parse_tasks(self, tasks_text: str) -> List[Dict]:
+        """
+        Parse tasks from text.
+
+        Args:
+            tasks_text: Text containing task descriptions
+
+        Returns:
+            List of task dictionaries
+        """
+        # Parse tasks
+        tasks = []
+        current_task = {}
+
+        # First, split by potential task boundaries
+        sections = tasks_text.split("\n\n")
+
+        for section in sections:
+            lines = section.strip().split("\n")
+            task_data = {}
+
+            # Check if this section looks like a task
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Try to parse key-value pairs
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    key = key.strip().lower()
+                    value = value.strip()
+
+                    # Map common key variations
+                    if "task id" in key or "id" == key:
+                        task_data["id"] = value
+                    elif "task name" in key or "name" == key:
+                        task_data["task name"] = value
+                    elif "description" in key:
+                        task_data["description"] = value
+                    elif "complexity" in key:
+                        task_data["complexity"] = value
+                    elif "dependencies" in key:
+                        task_data["dependencies"] = value
+                    elif "category" in key:
+                        task_data["category"] = value
+
+            # If we found at least an ID and name, consider it a valid task
+            if "id" in task_data and ("task name" in task_data or "description" in task_data):
+                tasks.append(task_data)
+
+        # If we couldn't parse any tasks using the section approach, try line-by-line
+        if not tasks:
+            current_task = {}
+
+            for line in tasks_text.split('\n'):
+                line = line.strip()
+
+                # Skip empty lines
+                if not line:
+                    continue
+
+                # Check if this is a new task
+                if line.startswith("Task ID:") or line.startswith("1.") or (line.lower().startswith("task") and "id" in line.lower()):
+                    # Save the previous task if it exists
+                    if current_task and "id" in current_task:
+                        tasks.append(current_task)
+
+                    # Start a new task
+                    current_task = {}
+
+                    # Extract ID if possible
+                    if ":" in line:
+                        current_task["id"] = line.split(":", 1)[1].strip()
+                    else:
+                        # Try to extract a number
+                        import re
+                        numbers = re.findall(r'\d+', line)
+                        if numbers:
+                            current_task["id"] = numbers[0]
+                        else:
+                            current_task["id"] = line
+                elif ":" in line:
+                    # Add property to the current task
+                    key, value = line.split(":", 1)
+                    key = key.strip().lower()
+
+                    # Map common key variations
+                    if "task name" in key or "name" == key:
+                        current_task["task name"] = value.strip()
+                    elif "description" in key:
+                        current_task["description"] = value.strip()
+                    elif "complexity" in key:
+                        current_task["complexity"] = value.strip()
+                    elif "dependencies" in key:
+                        current_task["dependencies"] = value.strip()
+                    elif "category" in key:
+                        current_task["category"] = value.strip()
+
+            # Add the last task
+            if current_task and "id" in current_task:
+                tasks.append(current_task)
+
+        # Ensure all tasks have the minimum required fields
+        for task in tasks:
+            if "task name" not in task and "id" in task:
+                task["task name"] = f"Task {task['id']}"
+            if "description" not in task:
+                task["description"] = task.get("task name", f"Task {task.get('id', 'unknown')}")
+
+        logger.info(f"Successfully parsed {len(tasks)} tasks")
+        return tasks
 
     def _generate_fallback_tasks(self, project_plan: Dict) -> List[Dict]:
         """
