@@ -8,6 +8,10 @@ An AI-powered code agent that can handle software engineering tasks based on a s
 - **Command Line Execution**: Run necessary commands to set up and develop the project
 - **Git Management**: Handle version control operations
 - **Code Review**: Review generated code for quality and issues
+- **Multiple AI Providers**: Support for Google Gemini, OpenAI, and Anthropic
+- **Markdown Logging**: Detailed development logs in Markdown format
+- **Code Editor Integration**: Open projects in your preferred code editor
+- **Local Deployment**: Deploy projects locally with automatic framework detection
 
 ## Requirements
 
@@ -48,6 +52,8 @@ This will guide you through the process of:
 2. Setting up the project structure
 3. Executing development tasks
 4. Reviewing the code
+5. Opening the project in a code editor
+6. Deploying the project locally
 
 ### Command Line Mode
 
@@ -63,6 +69,14 @@ Or read the description from a file:
 python main.py --file examples/web_app_description.txt
 ```
 
+### Custom Output Directory
+
+Specify a custom output directory for generated projects:
+
+```bash
+python main.py --output E:\Projects\generated "Create a React web application"
+```
+
 ### Simple Example
 
 Try the simple example script to see how the agent works:
@@ -70,6 +84,16 @@ Try the simple example script to see how the agent works:
 ```bash
 python examples/simple_example.py
 ```
+
+### AI Provider Selection
+
+You can select which AI provider to use by setting the `SELECTED_PROVIDER` environment variable in your `.env` file:
+
+```
+SELECTED_PROVIDER=openai  # Options: gemini, openai, anthropic
+```
+
+Make sure to set the corresponding API key for your selected provider.
 
 ## Project Structure
 
