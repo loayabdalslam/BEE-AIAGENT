@@ -10,6 +10,7 @@ from pathlib import Path
 
 from models.gemini_client import GeminiClient
 from agent.utils import extract_code_from_markdown
+from agent.package_handler import PackageHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -181,6 +182,14 @@ class Executor:
                         results["errors"].append(f"Error creating file {file_info['path']}: {file_result.get('error')}")
                 except Exception as e:
                     results["errors"].append(f"Error processing file {file_info['path']}: {str(e)}")
+
+            # Ensure package files are created based on project type
+            package_handler = PackageHandler(self.working_dir)
+            package_results = package_handler.ensure_package_files(structure)
+
+            # Add package files to results
+            results["created_files"].extend(package_results.get("created_files", []))
+            results["errors"].extend(package_results.get("errors", []))
 
             return results
         except Exception as e:

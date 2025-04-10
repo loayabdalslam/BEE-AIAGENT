@@ -129,6 +129,7 @@ class LocalDeployer:
     def deploy_locally(self) -> Dict:
         """
         Deploy the project locally based on its type.
+        Focuses on installing dependencies and providing start commands.
 
         Returns:
             Dictionary with deployment results
@@ -142,6 +143,9 @@ class LocalDeployer:
                 "message": "Unknown project type. Could not determine how to deploy.",
                 "project_type": project_type
             }
+
+        # First, ensure package files exist
+        self._ensure_package_files(project_type)
 
         # Deploy based on project type
         if project_type in ["react", "vite", "nextjs", "angular", "nodejs"]:
@@ -160,6 +164,72 @@ class LocalDeployer:
                 "message": f"Deployment for {project_type} projects is not yet supported.",
                 "project_type": project_type
             }
+
+    def _ensure_package_files(self, project_type: str) -> None:
+        """
+        Ensure that appropriate package files exist for the project type.
+
+        Args:
+            project_type: Type of project
+        """
+        # Check for package files
+        has_package_json = (self.project_dir / "package.json").exists()
+        has_requirements = (self.project_dir / "requirements.txt").exists()
+        has_gemfile = (self.project_dir / "Gemfile").exists()
+        has_cargo_toml = (self.project_dir / "Cargo.toml").exists()
+        has_pom_xml = (self.project_dir / "pom.xml").exists()
+        has_build_gradle = (self.project_dir / "build.gradle").exists()
+
+        # Create basic package files if they don't exist
+        if project_type in ["react", "vite", "nextjs", "angular", "nodejs"] and not has_package_json:
+            logger.info("Creating basic package.json file")
+            package_json = {
+                "name": self.project_dir.name,
+                "version": "1.0.0",
+                "description": "A JavaScript project",
+                "main": "index.js",
+                "scripts": {
+                    "start": "node index.js"
+                },
+                "dependencies": {},
+                "devDependencies": {}
+            }
+
+            # Add framework-specific settings
+            if project_type == "react":
+                package_json["dependencies"]["react"] = "^18.2.0"
+                package_json["dependencies"]["react-dom"] = "^18.2.0"
+                package_json["scripts"] = {"start": "react-scripts start", "build": "react-scripts build"}
+            elif project_type == "vite":
+                package_json["scripts"] = {"dev": "vite", "build": "vite build"}
+            elif project_type == "nextjs":
+                package_json["dependencies"]["next"] = "^13.4.7"
+                package_json["dependencies"]["react"] = "^18.2.0"
+                package_json["dependencies"]["react-dom"] = "^18.2.0"
+                package_json["scripts"] = {"dev": "next dev", "build": "next build", "start": "next start"}
+            elif project_type == "angular":
+                package_json["scripts"] = {"ng": "ng", "start": "ng serve", "build": "ng build"}
+
+            import json
+            with open(self.project_dir / "package.json", "w", encoding='utf-8') as f:
+                json.dump(package_json, f, indent=2)
+
+        # Create requirements.txt for Python projects
+        if project_type in ["flask", "fastapi", "django", "python"] and not has_requirements:
+            logger.info("Creating basic requirements.txt file")
+            requirements = []
+
+            if project_type == "flask":
+                requirements.extend(["Flask>=2.3.2", "Werkzeug>=2.3.6", "Jinja2>=3.1.2"])
+            elif project_type == "django":
+                requirements.extend(["Django>=4.2.3", "djangorestframework>=3.14.0"])
+            elif project_type == "fastapi":
+                requirements.extend(["fastapi>=0.100.0", "uvicorn>=0.22.0", "pydantic>=2.0.3"])
+            else:
+                requirements.extend(["requests>=2.31.0", "python-dotenv>=1.0.0"])
+
+            with open(self.project_dir / "requirements.txt", "w", encoding='utf-8') as f:
+                f.write("\n".join(requirements))
 
     def _deploy_nodejs(self, project_type: str) -> Dict:
         """
