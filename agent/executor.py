@@ -33,13 +33,14 @@ class Executor:
         self.working_dir = working_dir or Path.cwd()
         self.command_history = []
 
-    def execute_command(self, command: str, capture_output: bool = True) -> Dict:
+    def execute_command(self, command: str, capture_output: bool = True, timeout: int = 600) -> Dict:
         """
         Execute a shell command.
 
         Args:
             command: Command to execute
             capture_output: Whether to capture and return command output
+            timeout: Timeout in seconds (default: 10 minutes)
 
         Returns:
             Dictionary with command execution results
@@ -47,14 +48,100 @@ class Executor:
         logger.info(f"Executing command: {command}")
         self.command_history.append(command)
 
+        # Check if this is a known project creation command that should be avoided
+        is_code_generator = any(cmd in command for cmd in [
+            "create-react-app",
+            "npx create-",
+            "yarn create",
+            "django-admin startproject",
+            "rails new",
+            "vue create",
+            "ng new"
+        ])
+
+        # Warn about code generators and suggest manual file creation instead
+        if is_code_generator:
+            logger.warning(f"Code generator command detected: {command}")
+            logger.warning("Code generators should be avoided in favor of direct file creation.")
+            print(f"\n[WARNING] Code generator command detected: {command}")
+            print("This type of command should be avoided in favor of direct file creation.")
+            print("The agent will proceed, but consider modifying your approach to use direct file creation instead.\n")
+
+        # Check if this is a known project creation command
+        is_project_creation = is_code_generator or any(cmd in command for cmd in [
+            "npm init -y",
+            "cargo init",
+            "mvn archetype:generate"
+        ])
+
+        # Check if this is a known long-running command
+        is_long_running = is_project_creation or any(cmd in command for cmd in [
+            "npm install",
+            "yarn install",
+            "pip install",
+            "mvn install",
+            "gradle build",
+            "cargo build"
+        ])
+
+        # Handle project creation commands specially
+        if is_project_creation:
+            # Extract the project name from the command
+            project_name = self._extract_project_name_from_command(command)
+
+            # Check if we're already in a directory with that name
+            current_dir_name = Path(self.working_dir).name
+
+            if project_name and project_name != current_dir_name:
+                logger.info(f"Project creation command detected. Project name: {project_name}")
+                logger.info(f"Current directory: {current_dir_name}")
+
+                # If we're not in a directory with the project name, we have two options:
+                # 1. Change the command to create in the current directory
+                # 2. Change our working directory to the parent and let the command create a new directory
+
+                # Option 1: Modify the command to create in the current directory
+                if "create-react-app" in command or "npx create-" in command:
+                    # For React apps, we can use '.' to create in the current directory
+                    modified_command = command.replace(project_name, ".")
+                    logger.info(f"Modified command to create in current directory: {modified_command}")
+                    command = modified_command
+                    print(f"\nModified command to create in current directory: {command}")
+
+        if is_long_running:
+            logger.info(f"Detected long-running command: {command}")
+            logger.info("This may take several minutes. Please be patient...")
+            print(f"\nExecuting long-running command: {command}")
+            print("This may take several minutes. Please be patient...\n")
+
         try:
-            # Execute the command
+            # For long-running commands, show output in real-time
+            if is_long_running and not capture_output:
+                process = subprocess.Popen(
+                    command,
+                    shell=True,
+                    cwd=self.working_dir,
+                    text=True
+                )
+                process.wait(timeout=timeout)
+
+                result = {
+                    "command": command,
+                    "return_code": process.returncode,
+                    "success": process.returncode == 0,
+                    "long_running": True
+                }
+
+                return result
+
+            # For normal commands or when capturing output
             process = subprocess.run(
                 command,
                 shell=True,
                 cwd=self.working_dir,
                 capture_output=capture_output,
-                text=True
+                text=True,
+                timeout=timeout
             )
 
             result = {
@@ -68,6 +155,14 @@ class Executor:
                 result["stderr"] = process.stderr
 
             return result
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Command timed out after {timeout} seconds: {command}")
+            return {
+                "command": command,
+                "error": f"Command timed out after {timeout} seconds",
+                "success": False,
+                "timed_out": True
+            }
         except Exception as e:
             logger.error(f"Error executing command: {e}")
             return {
@@ -196,6 +291,48 @@ class Executor:
             logger.error(f"Error setting up project structure: {e}")
             results["errors"].append(f"General error: {str(e)}")
             return results
+
+    def _extract_project_name_from_command(self, command: str) -> Optional[str]:
+        """
+        Extract the project name from a project creation command.
+
+        Args:
+            command: The command string
+
+        Returns:
+            The project name or None if it couldn't be extracted
+        """
+        # For create-react-app and similar commands
+        if "create-react-app" in command or "npx create-" in command:
+            parts = command.split()
+            # The last part is usually the project name
+            for part in reversed(parts):
+                # Skip options (starting with -)
+                if not part.startswith("-") and part != "create-react-app" and "npx" not in part and "create-" not in part:
+                    return part
+
+        # For django-admin startproject
+        if "django-admin startproject" in command:
+            parts = command.split()
+            try:
+                idx = parts.index("startproject")
+                if idx + 1 < len(parts):
+                    return parts[idx + 1]
+            except ValueError:
+                pass
+
+        # For cargo init
+        if "cargo init" in command:
+            parts = command.split()
+            # Check if there's a name after 'init'
+            try:
+                idx = parts.index("init")
+                if idx + 1 < len(parts) and not parts[idx + 1].startswith("--"):
+                    return parts[idx + 1]
+            except ValueError:
+                pass
+
+        return None
 
     def get_command_history(self) -> List[str]:
         """

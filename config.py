@@ -40,13 +40,16 @@ COMMIT_MESSAGE_PREFIX = "[AI-AGENT]"
 
 # Paths
 ROOT_DIR = Path(__file__).parent
-OUTPUT_DIR = ROOT_DIR / "output"
+OUTPUT_DIR = ROOT_DIR / "output"  # Default output directory
 TEMPLATES_DIR = ROOT_DIR / "templates"
 
 # Output path from environment or default
 CUSTOM_OUTPUT_PATH = os.getenv("OUTPUT_PATH")
 if CUSTOM_OUTPUT_PATH:
     OUTPUT_DIR = Path(CUSTOM_OUTPUT_PATH)
+else:
+    # Always use the output directory by default
+    OUTPUT_DIR = ROOT_DIR / "output"
 
 # Create directories if they don't exist
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)

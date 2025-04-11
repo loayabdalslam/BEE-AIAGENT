@@ -171,7 +171,27 @@ def format_command_output(output: Dict) -> str:
     result.append(f"$ {output.get('command', 'Unknown command')}")
     result.append("")
 
-    # Add status
+    # Handle long-running commands
+    if output.get("long_running", False):
+        if output.get("success", False):
+            result.append("✅ Long-running command completed successfully")
+        else:
+            result.append("❌ Long-running command failed")
+
+        # Add return code
+        if "return_code" in output:
+            result.append(f"Return code: {output['return_code']}")
+
+        return "\n".join(result)
+
+    # Handle timeout
+    if output.get("timed_out", False):
+        result.append("⚠️ Command timed out")
+        if "error" in output:
+            result.append(f"Timeout: {output['error']}")
+        return "\n".join(result)
+
+    # Add status for normal commands
     if output.get("success", False):
         result.append("✅ Command executed successfully")
     else:
@@ -186,7 +206,14 @@ def format_command_output(output: Dict) -> str:
         result.append("")
         result.append("Standard output:")
         result.append("```")
-        result.append(output["stdout"])
+        # Limit stdout to 50 lines to avoid overwhelming the console
+        stdout_lines = output["stdout"].splitlines()
+        if len(stdout_lines) > 50:
+            result.append("\n".join(stdout_lines[:25]))
+            result.append("\n... (output truncated) ...\n")
+            result.append("\n".join(stdout_lines[-25:]))
+        else:
+            result.append(output["stdout"])
         result.append("```")
 
     # Add stderr
@@ -194,7 +221,14 @@ def format_command_output(output: Dict) -> str:
         result.append("")
         result.append("Standard error:")
         result.append("```")
-        result.append(output["stderr"])
+        # Limit stderr to 50 lines to avoid overwhelming the console
+        stderr_lines = output["stderr"].splitlines()
+        if len(stderr_lines) > 50:
+            result.append("\n".join(stderr_lines[:25]))
+            result.append("\n... (output truncated) ...\n")
+            result.append("\n".join(stderr_lines[-25:]))
+        else:
+            result.append(output["stderr"])
         result.append("```")
 
     # Add error

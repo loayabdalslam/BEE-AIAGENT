@@ -88,6 +88,13 @@ class Planner:
         5. Dependencies (IDs of tasks that must be completed first)
         6. Category (Setup, Backend, Frontend, Testing, Deployment, etc.)
 
+        IMPORTANT GUIDELINES FOR TASKS:
+        - DO NOT include tasks that use external code generators like 'create-react-app', 'npx create-next-app', etc.
+        - Instead, create tasks for manually writing all necessary code files
+        - Include tasks for creating configuration files (package.json, webpack.config.js, etc.) manually
+        - Only include commands for necessary package installations (npm install, pip install, etc.)
+        - Break down the project into smaller, manageable tasks for creating a complete project structure
+
         Format each task as follows:
 
         Task ID: 1

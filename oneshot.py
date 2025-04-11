@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # Initialize console for rich output
 console = Console()
 
-def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bool = True, deploy: bool = True) -> bool:
+def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bool = True, deploy: bool = True, project_name: Optional[str] = None) -> bool:
     """
     Run the entire project generation and deployment process in one shot.
 
@@ -45,6 +45,7 @@ def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bo
         output_dir: Output directory for the project
         open_editor: Whether to open the project in a code editor
         deploy: Whether to deploy the project locally
+        project_name: Optional project name to use (if not provided, will be derived from description)
 
     Returns:
         True if successful, False otherwise
@@ -56,6 +57,10 @@ def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bo
     try:
         # Initialize the agent
         agent = CodeAgent(output_dir)
+
+        # If project_name is provided, set it directly to avoid creating a new folder
+        if project_name:
+            agent.project_name = project_name
 
         # Step 1: Process the project description
         console.print("[bold yellow]Step 1: Processing project description...[/bold yellow]")
@@ -76,35 +81,68 @@ def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bo
         # Step 3: Execute all tasks
         console.print("\n[bold yellow]Step 3: Implementing all tasks...[/bold yellow]")
 
+        # Print a note about direct code generation
+        console.print("\n[bold cyan]Note about code generation:[/bold cyan]")
+        console.print("The agent will generate all code directly without using external code generators.")
+        console.print("This means it will create all necessary files manually instead of using tools like 'create-react-app'.")
+        console.print("All configuration files (package.json, etc.) will be created with appropriate content.")
+        console.print("Only necessary package installation commands will be used.\n")
+
         for i, task in enumerate(agent.tasks):
             task_name = task.get('task name', task.get('name', f'Task {i+1}'))
             console.print(f"\nImplementing task {i+1}/{len(agent.tasks)}: [bold]{task_name}[/bold]")
 
+            # Check if this is likely a project initialization task
+            is_init_task = any(keyword in task_name.lower() for keyword in [
+                "init", "create", "setup", "scaffold", "generate", "bootstrap"
+            ])
+
+            if is_init_task:
+                console.print("[yellow]This appears to be a project initialization task.[/yellow]")
+                console.print("[yellow]The agent will generate all necessary files directly without using external code generators.[/yellow]")
+                console.print("[yellow]Please be patient while the agent generates the code...[/yellow]")
+
+            # Execute the task
             task_result = agent.execute_task(i)
 
             if not task_result["success"]:
                 console.print(f"[bold red]Error executing task {i+1}:[/bold red] {task_result.get('error', 'Unknown error')}")
                 # Continue with the next task even if this one failed
 
-        # Step 4: Review code
-        console.print("\n[bold yellow]Step 4: Reviewing code...[/bold yellow]")
+        # Step 4: Deploy locally to install packages (if requested)
+        if deploy:
+            console.print("\n[bold yellow]Step 4: Installing packages...[/bold yellow]")
+            console.print("[yellow]Installing packages before code review to ensure all dependencies are available.[/yellow]")
+            deploy_result = agent.deploy_locally()
+
+            if not deploy_result["success"]:
+                console.print(f"[bold red]Error installing packages:[/bold red] {deploy_result.get('error', 'Unknown error')}")
+                # Continue even if package installation failed
+            else:
+                console.print("\n[bold green]Package installation successful![/bold green]")
+                if "start_command" in deploy_result:
+                    console.print(f"To start the application, run: [bold yellow]{deploy_result['start_command']}[/bold yellow]")
+
+        # Step 5: Review code
+        console.print("\n[bold yellow]Step 5: Reviewing code...[/bold yellow]")
         review_result = agent.review_code(auto_fix=False)
 
         if not review_result["success"]:
             console.print(f"[bold red]Error reviewing code:[/bold red] {review_result.get('error', 'Unknown error')}")
             # Continue even if review failed
 
-        # Step 5: Fix code issues
-        console.print("\n[bold yellow]Step 5: Fixing code issues...[/bold yellow]")
+        # Step 6: Fix code issues
+        console.print("\n[bold yellow]Step 6: Fixing code issues...[/bold yellow]")
         fix_result = agent.review_code(auto_fix=True)
 
         if not fix_result["success"]:
             console.print(f"[bold red]Error fixing code:[/bold red] {fix_result.get('error', 'Unknown error')}")
             # Continue even if fixing failed
 
-        # Step 6: Deploy locally (if requested)
+        # Step 7: Deploy locally again if needed (if requested)
         if deploy:
-            console.print("\n[bold yellow]Step 6: Deploying project locally...[/bold yellow]")
+            console.print("\n[bold yellow]Step 7: Finalizing deployment...[/bold yellow]")
+            console.print("[yellow]Running deployment again to ensure all changes are properly applied.[/yellow]")
             deploy_result = agent.deploy_locally()
 
             if not deploy_result["success"]:
@@ -117,9 +155,9 @@ def oneshot(description: str, output_dir: Optional[Path] = None, open_editor: bo
                 if "url" in deploy_result and deploy_result["url"]:
                     console.print(f"Application will be available at: [bold blue]{deploy_result['url']}[/bold blue]")
 
-        # Step 7: Open in code editor (if requested)
+        # Step 8: Open in code editor (if requested)
         if open_editor:
-            console.print("\n[bold yellow]Step 7: Opening project in code editor...[/bold yellow]")
+            console.print("\n[bold yellow]Step 8: Opening project in code editor...[/bold yellow]")
             agent.open_in_editor()
 
         # Final summary
@@ -140,18 +178,26 @@ def main():
     parser.add_argument("--output", "-o", help="Output directory for the project")
     parser.add_argument("--no-editor", action="store_true", help="Don't open the project in a code editor")
     parser.add_argument("--no-deploy", action="store_true", help="Don't deploy the project locally")
+    parser.add_argument("--name", "-n", help="Project name (to avoid creating a new folder)")
 
     args = parser.parse_args()
 
-    # Set output directory if provided
-    output_dir = Path(args.output) if args.output else OUTPUT_DIR
+    # Set output directory
+    # Always use the output directory by default
+    if args.output:
+        # If a specific output directory is provided, use it
+        output_dir = Path(args.output)
+    else:
+        # Otherwise, use the default output directory
+        output_dir = OUTPUT_DIR
 
     # Run the oneshot function
     success = oneshot(
         description=args.description,
         output_dir=output_dir,
         open_editor=not args.no_editor,
-        deploy=not args.no_deploy
+        deploy=not args.no_deploy,
+        project_name=args.name
     )
 
     # Exit with appropriate code

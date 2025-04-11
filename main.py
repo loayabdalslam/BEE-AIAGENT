@@ -63,7 +63,13 @@ class CodeAgent:
         self.project_dir = None
 
         # Set output directory
-        self.output_dir = output_dir or OUTPUT_DIR
+        # Always use the output directory by default
+        if output_dir:
+            # If a specific output directory is provided, use it
+            self.output_dir = output_dir
+        else:
+            # Otherwise, use the default output directory
+            self.output_dir = OUTPUT_DIR
 
         # Initialize logger (will be properly set up once we have a project name and directory)
         self.logger = None
@@ -391,6 +397,15 @@ class CodeAgent:
         Project context:
         {self.project_plan.get('raw_plan', '')}
 
+        Project name: {self.project_name}
+
+        IMPORTANT GUIDELINES:
+        - DO NOT use external code generators like 'create-react-app', 'npx create-next-app', etc.
+        - Instead, write all necessary code files directly
+        - Generate all required configuration files (package.json, webpack.config.js, etc.) manually
+        - Only use commands for necessary package installations (npm install, pip install, etc.)
+        - Create a complete, working project structure with all required files
+
         Generate a list of specific commands and code changes needed to implement this task.
         Provide your response in the following JSON format:
         {{
@@ -439,7 +454,38 @@ class CodeAgent:
                     console.print(f"[italic]{description}[/italic]")
 
                     # Execute the command
-                    result = self.executor.execute_command(command)
+                    # Check if this is a code generator command that should be avoided
+                    is_code_generator = any(cmd in command for cmd in [
+                        "create-react-app",
+                        "npx create-",
+                        "yarn create",
+                        "django-admin startproject",
+                        "rails new",
+                        "vue create",
+                        "ng new"
+                    ])
+
+                    # For package installation commands, don't capture output to show real-time progress
+                    is_package_install = any(cmd in command for cmd in [
+                        "npm install",
+                        "yarn add",
+                        "pip install",
+                        "mvn install",
+                        "gradle build",
+                        "cargo build"
+                    ])
+
+                    if is_code_generator:
+                        console.print("[bold red]Warning: Code generator commands should be avoided.[/bold red]")
+                        console.print("[yellow]The agent should generate all code files directly instead of using external generators.[/yellow]")
+                        console.print("[yellow]Proceeding with the command, but consider modifying your approach.[/yellow]\n")
+                        result = self.executor.execute_command(command, capture_output=False)
+                    elif is_package_install:
+                        console.print("[yellow]This is a package installation command that may take several minutes.[/yellow]")
+                        console.print("[yellow]Output will be displayed in real-time. Please be patient...[/yellow]\n")
+                        result = self.executor.execute_command(command, capture_output=False)
+                    else:
+                        result = self.executor.execute_command(command)
 
                     # Display the result
                     console.print(Markdown(format_command_output(result)))

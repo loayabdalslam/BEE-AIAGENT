@@ -13,6 +13,7 @@ An AI-powered code agent that can handle software engineering tasks based on a s
 - **Code Editor Integration**: Open projects in your preferred code editor
 - **Local Deployment**: Deploy projects locally with automatic framework detection
 - **One-Shot Mode**: Generate, implement, review, and deploy a project in a single command
+- **Fix Project Mode**: Analyze existing projects, identify issues, and apply fixes
 
 ## Requirements
 
@@ -104,14 +105,42 @@ For a complete end-to-end experience, use the one-shot mode to generate, impleme
 python oneshot.py "Create a Flask web application with user authentication"
 ```
 
+By default, all projects are created in the `output` directory to keep your workspace organized.
+
 Options:
-- `--output` or `-o`: Specify output directory
+- `--output` or `-o`: Specify a custom output directory
 - `--no-editor`: Don't open the project in a code editor
 - `--no-deploy`: Don't deploy the project locally
+- `--name` or `-n`: Specify project name (to avoid creating a new folder)
 
 ```bash
 python oneshot.py --output E:\Projects\generated --no-deploy "Create a React web application"
 ```
+
+### Fix Project Mode
+
+Use the fix project mode to analyze an existing project, identify issues based on a problem description, and apply fixes:
+
+```bash
+python fix_project.py /path/to/project "Description of the problem to fix"
+```
+
+By default, the project will be copied to the `output` directory and all changes will be made there, preserving your original code.
+
+Options:
+- `--no-editor`: Don't open the project in a code editor
+- `--no-deploy`: Don't deploy the project locally
+- `--output` or `-o`: Specify a custom output directory for the fixed project
+
+```bash
+python fix_project.py E:\Projects\my-project "Fix the login functionality that's not working"
+```
+
+This mode is particularly useful for:
+- Debugging existing projects
+- Adding new features to existing code
+- Refactoring and improving code quality
+- Fixing specific issues described by the user
 
 ## Project Structure
 
